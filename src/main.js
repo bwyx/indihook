@@ -1,5 +1,10 @@
 const { chromium } = require('playwright')
-const config = require('./config')
+
+const auth = require('./utils/auth')
+const getPublicIP = require('./utils/getPublicIP')
+const getWanIP = require('./jobs/getWanIP')
+const reloadWAN = require('./jobs/reloadWAN')
+const config = require('../config')
 
 ;(async () => {
   const browser = await chromium.launch({
@@ -10,61 +15,29 @@ const config = require('./config')
   // Open new page
   const page = await context.newPage()
 
-  // Go to router web login
-  await page.goto(`http://${routerIp}/login.html`)
-
-  const frame = (name) =>
+  const f = (name) =>
     page.frame({
       name
     })
 
-  // Click input[name="User"]
-  await frame('loginPage').click('input[name="User"]')
+  // make Auth
+  await auth.asAdmin(context, page)
 
-  // Fill input[name="User"]
-  await frame('loginPage').fill('input[name="User"]', 'admin')
+  const wanIP = await getWanIP(f)
+  const publicIP = await getPublicIP()
+  console.table({ wanIP, publicIP })
 
-  // Click input[name="Passwd"]
-  await frame('loginPage').click('input[name="Passwd"]')
+  if (wanIP === publicIP) {
+    console.log('great. nothing todo.')
+  } else {
+    console.log('nope.')
+    await reloadWAN(f)
+    console.log('done.')
+  }
 
-  // Fill input[name="Passwd"]
-  await frame('loginPage').fill('input[name="Passwd"]', '%0|F?H@f!berhO3e')
+  await auth.logout(f)
 
-  // Click text=Login
-  await Promise.all([
-    page.waitForNavigation(/*{ url: 'http://192.168.1.1/menu.html' }*/),
-    frame('loginPage').click('text=Login')
-  ])
-
-  // Click text=Network
-  await frame('loginPage').click('text=Network')
-
-  // Click text=BroadBand Settings
-  await frame('loginPage').click('text=BroadBand Settings')
-
-  // Turn off WAN
-  await frame('frameContent').selectOption('select[name="wan_enable"]', '0')
-
-  // Click text=Apply
-  await frame('frameContent').click('text=Apply')
-
-  await page.waitForLoadState('networkidle')
-
-  // Turn on WAN
-  await frame('frameContent').selectOption('select[name="wan_enable"]', '1')
-
-  // Click text=Apply
-  await frame('frameContent').click('text=Apply')
-
-  await page.waitForLoadState('networkidle')
-
-  // Click text=Logout
-  await Promise.all([
-    page.waitForNavigation(/*{ url: 'http://192.168.1.1/login.html' }*/),
-    frame('loginPage').click('text=Logout')
-  ])
-
-  // ---------------------
+  //---------------------
   await context.close()
   await browser.close()
 })()
